@@ -70,3 +70,73 @@ func TestTensorDesc(t *testing.T) {
 		return nil
 	})
 }
+
+func TestFilterDesc(t *testing.T) {
+	ctx := setupTest(t)
+	<-ctx.Run(func() error {
+		makers := []func(t *FilterDesc) error{
+			func(f *FilterDesc) error {
+				return f.Set4D(Half, TensorNHWC, 2, 3, 384, 512)
+			},
+			func(f *FilterDesc) error {
+				return f.Set(Half, TensorNHWC, []int{2, 3, 384, 512})
+			},
+		}
+		for i, maker := range makers {
+			filter, err := NewFilterDesc(ctx)
+			if err != nil {
+				t.Error(err)
+				return nil
+			}
+
+			if err := maker(filter); err != nil {
+				t.Errorf("maker %d: %s", i, err)
+				continue
+			}
+
+			dataType, format, n, c, h, w, err := filter.Get4D()
+			if err != nil {
+				t.Error(err)
+				return nil
+			}
+
+			if dataType != Half {
+				t.Errorf("maker %d: bad data type: %v", i, dataType)
+			}
+			if format != TensorNHWC {
+				t.Errorf("maker %d: bad format: %v", i, format)
+			}
+
+			nums := []int{n, c, h, w}
+			expected := []int{2, 3, 384, 512}
+			for j, x := range expected {
+				a := nums[j]
+				if a != x {
+					t.Errorf("maker %d: parameter %d: expected %v but got %v", i, j, x, a)
+				}
+			}
+
+			dataType, format, dims, err := filter.Get()
+			if err != nil {
+				t.Error(err)
+				return nil
+			}
+
+			if dataType != Half {
+				t.Errorf("maker %d: bad data type: %v", i, dataType)
+			}
+			if format != TensorNHWC {
+				t.Errorf("maker %d: bad format: %v", i, format)
+			}
+
+			nums = dims
+			for j, x := range expected {
+				a := nums[j]
+				if a != x {
+					t.Errorf("maker %d: parameter %d: expected %v but got %v", i, j, x, a)
+				}
+			}
+		}
+		return nil
+	})
+}

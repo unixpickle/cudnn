@@ -30,6 +30,17 @@ const (
 	TensorNHWC
 )
 
+func newTensorFormatC(val C.cudnnTensorFormat_t) TensorFormat {
+	switch val {
+	case C.goCudnnNCHW:
+		return TensorNCHW
+	case C.goCudnnNHWC:
+		return TensorNHWC
+	default:
+		panic("unable to create TensorFormat")
+	}
+}
+
 func (t TensorFormat) cValue() C.cudnnTensorFormat_t {
 	switch t {
 	case TensorNCHW:
@@ -103,7 +114,8 @@ func NewTensorDesc(ctx *cuda.Context) (*TensorDesc, error) {
 // Set4D initializes the descriptor for a 4D tensor.
 //
 // This should be called from the cuda.Context.
-func (t *TensorDesc) Set4D(format TensorFormat, dataType DataType, n, c, h, w int) error {
+func (t *TensorDesc) Set4D(format TensorFormat, dataType DataType,
+	n, c, h, w int) error {
 	status := C.cudnnSetTensor4dDescriptor(t.desc, format.cValue(), dataType.cValue(),
 		safeIntToC(n), safeIntToC(c), safeIntToC(h), safeIntToC(w))
 	return newError("cudnnSetTensor4dDescriptor", status)
@@ -124,8 +136,8 @@ func (t *TensorDesc) Set4DEx(dataType DataType, n, c, h, w, nStride, cStride,
 // Get4D gets the parameters of the 4D tensor.
 //
 // This should be called from the cuda.Context.
-func (t *TensorDesc) Get4D() (dataType DataType, n, c, h, w, nStride, cStride,
-	hStride, wStride int, err error) {
+func (t *TensorDesc) Get4D() (dataType DataType, n, c, h, w,
+	nStride, cStride, hStride, wStride int, err error) {
 	var cn, cc, ch, cw, cnStride, ccStride, chStride, cwStride C.int
 	var cType C.cudnnDataType_t
 	status := C.cudnnGetTensor4dDescriptor(t.desc, &cType, &cn, &cc, &ch, &cw,
@@ -186,6 +198,107 @@ func (t *TensorDesc) Get() (dataType DataType, dims, strides []int, err error) {
 	for i := range dims {
 		dims[i] = int(outDims[i])
 		strides[i] = int(outStrides[i])
+	}
+	return
+}
+
+// A FilterDesc describes the layout of a set of
+// convolutional filters in memory.
+type FilterDesc struct {
+	desc C.cudnnFilterDescriptor_t
+	ctx  *cuda.Context
+}
+
+// NewFilterDesc creates a new FilterDesc.
+//
+// This should be called from the cuda.Context.
+func NewFilterDesc(ctx *cuda.Context) (*FilterDesc, error) {
+	res := &FilterDesc{ctx: ctx}
+	status := C.cudnnCreateFilterDescriptor(&res.desc)
+	if err := newError("cudnnCreateFilterDescriptor", status); err != nil {
+		return nil, err
+	}
+	runtime.SetFinalizer(res, func(f *FilterDesc) {
+		f.ctx.Run(func() error {
+			C.cudnnDestroyFilterDescriptor(f.desc)
+			return nil
+		})
+	})
+	return res, nil
+}
+
+// Set4D initializes the descriptor for a 4D filter.
+//
+// This should be called from the cuda.Context.
+func (f *FilterDesc) Set4D(dataType DataType, format TensorFormat,
+	n, c, h, w int) error {
+	status := C.cudnnSetFilter4dDescriptor(f.desc, dataType.cValue(), format.cValue(),
+		safeIntToC(n), safeIntToC(c), safeIntToC(h), safeIntToC(w))
+	return newError("cudnnSetFilter4dDescriptor", status)
+}
+
+// Get4D gets the parameters of the 4D tensor.
+//
+// This should be called from the cuda.Context.
+func (f *FilterDesc) Get4D() (dataType DataType, format TensorFormat,
+	n, c, h, w int, err error) {
+	var cn, cc, ch, cw C.int
+	var cType C.cudnnDataType_t
+	var cFormat C.cudnnTensorFormat_t
+	status := C.cudnnGetFilter4dDescriptor(f.desc, &cType, &cFormat,
+		&cn, &cc, &ch, &cw)
+	err = newError("cudnnGetFilter4dDescriptor", status)
+	dataType = newDataTypeC(cType)
+	format = newTensorFormatC(cFormat)
+	n, c, h, w = int(cn), int(cc), int(ch), int(cw)
+	return
+}
+
+// Set sets variable-length tensor information.
+//
+// This should be called from the cuda.Context.
+func (f *FilterDesc) Set(dataType DataType, format TensorFormat, dims []int) error {
+	cDims := make([]C.int, len(dims))
+	for i, x := range dims {
+		cDims[i] = safeIntToC(x)
+	}
+	status := C.cudnnSetFilterNdDescriptor(f.desc, dataType.cValue(), format.cValue(),
+		safeIntToC(len(dims)), (*C.int)(&cDims[0]))
+	return newError("cudnnSetFilterNdDescriptor", status)
+}
+
+// Get gets the variable-length tensor information.
+//
+// This should be called from the cuda.Context.
+func (f *FilterDesc) Get() (dataType DataType, format TensorFormat, dims []int,
+	err error) {
+	var cType C.cudnnDataType_t
+	var cFormat C.cudnnTensorFormat_t
+	var nDims C.int
+
+	// We get CUDNN_STATUS_BAD_PARAM if we ask for 0
+	// dimensions like we do for TensorDesc.
+	outDims := make([]C.int, 1)
+	status := C.cudnnGetFilterNdDescriptor(f.desc, 1, &cType, &cFormat, &nDims,
+		(*C.int)(&outDims[0]))
+	err = newError("cudnnGetFilterNdDescriptor", status)
+	if err != nil {
+		return
+	}
+
+	outDims = make([]C.int, int(nDims))
+	status = C.cudnnGetFilterNdDescriptor(f.desc, nDims, &cType, &cFormat, &nDims,
+		(*C.int)(&outDims[0]))
+	err = newError("cudnnGetFilterNdDescriptor", status)
+	if err != nil {
+		return
+	}
+
+	dataType = newDataTypeC(cType)
+	format = newTensorFormatC(cFormat)
+	dims = make([]int, len(outDims))
+	for i := range dims {
+		dims[i] = int(outDims[i])
 	}
 	return
 }
