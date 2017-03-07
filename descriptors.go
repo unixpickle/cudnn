@@ -151,6 +151,7 @@ func (t *TensorDesc) Set4D(format TensorFormat, dataType DataType,
 	n, c, h, w int) error {
 	status := C.cudnnSetTensor4dDescriptor(t.desc, format.cValue(), dataType.cValue(),
 		safeIntToC(n), safeIntToC(c), safeIntToC(h), safeIntToC(w))
+	runtime.KeepAlive(t)
 	return newError("cudnnSetTensor4dDescriptor", status)
 }
 
@@ -163,6 +164,7 @@ func (t *TensorDesc) Set4DEx(dataType DataType, n, c, h, w, nStride, cStride,
 		safeIntToC(n), safeIntToC(c), safeIntToC(h), safeIntToC(w),
 		safeIntToC(nStride), safeIntToC(cStride), safeIntToC(hStride),
 		safeIntToC(wStride))
+	runtime.KeepAlive(t)
 	return newError("cudnnSetTensor4dDescriptorEx", status)
 }
 
@@ -180,6 +182,7 @@ func (t *TensorDesc) Get4D() (dataType DataType, n, c, h, w,
 	n, c, h, w = int(cn), int(cc), int(ch), int(cw)
 	nStride, cStride, hStride, wStride = int(cnStride), int(ccStride), int(chStride),
 		int(cwStride)
+	runtime.KeepAlive(t)
 	return
 }
 
@@ -200,6 +203,7 @@ func (t *TensorDesc) Set(dataType DataType, dims, strides []int) error {
 	}
 	status := C.cudnnSetTensorNdDescriptor(t.desc, dataType.cValue(),
 		safeIntToC(len(dims)), (*C.int)(&cDims[0]), (*C.int)(&cStrides[0]))
+	runtime.KeepAlive(t)
 	return newError("cudnnSetTensorNdDescriptor", status)
 }
 
@@ -232,6 +236,7 @@ func (t *TensorDesc) Get() (dataType DataType, dims, strides []int, err error) {
 		dims[i] = int(outDims[i])
 		strides[i] = int(outStrides[i])
 	}
+	runtime.KeepAlive(t)
 	return
 }
 
@@ -267,6 +272,7 @@ func (f *FilterDesc) Set4D(dataType DataType, format TensorFormat,
 	n, c, h, w int) error {
 	status := C.cudnnSetFilter4dDescriptor(f.desc, dataType.cValue(), format.cValue(),
 		safeIntToC(n), safeIntToC(c), safeIntToC(h), safeIntToC(w))
+	runtime.KeepAlive(f)
 	return newError("cudnnSetFilter4dDescriptor", status)
 }
 
@@ -284,6 +290,7 @@ func (f *FilterDesc) Get4D() (dataType DataType, format TensorFormat,
 	dataType = newDataTypeC(cType)
 	format = newTensorFormatC(cFormat)
 	n, c, h, w = int(cn), int(cc), int(ch), int(cw)
+	runtime.KeepAlive(f)
 	return
 }
 
@@ -297,6 +304,7 @@ func (f *FilterDesc) Set(dataType DataType, format TensorFormat, dims []int) err
 	}
 	status := C.cudnnSetFilterNdDescriptor(f.desc, dataType.cValue(), format.cValue(),
 		safeIntToC(len(dims)), (*C.int)(&cDims[0]))
+	runtime.KeepAlive(f)
 	return newError("cudnnSetFilterNdDescriptor", status)
 }
 
@@ -333,6 +341,7 @@ func (f *FilterDesc) Get() (dataType DataType, format TensorFormat, dims []int,
 	for i := range dims {
 		dims[i] = int(outDims[i])
 	}
+	runtime.KeepAlive(f)
 	return
 }
 
@@ -368,6 +377,7 @@ func (c *ConvDesc) Set2D(padH, padW, strideH, strideW, upscaleX, upscaleY int,
 	status := C.cudnnSetConvolution2dDescriptor(c.desc, safeIntToC(padH),
 		safeIntToC(padW), safeIntToC(strideH), safeIntToC(strideW),
 		safeIntToC(upscaleX), safeIntToC(upscaleY), mode.cValue())
+	runtime.KeepAlive(c)
 	return newError("cudnnSetConvolution2dDescriptor", status)
 }
 
@@ -386,6 +396,7 @@ func (c *ConvDesc) Get2D() (padH, padW, strideH, strideW, upscaleX, upscaleY int
 	padH, padW = int(cPadH), int(cPadW)
 	strideH, strideW = int(cStrideH), int(cStrideW)
 	upscaleX, upscaleY = int(cUpscaleX), int(cUpscaleY)
+	runtime.KeepAlive(c)
 	return
 }
 
@@ -404,6 +415,7 @@ func (c *ConvDesc) Set(pad, stride, upscale []int, mode ConvMode, dataType DataT
 	}
 	status := C.cudnnSetConvolutionNdDescriptor(c.desc, safeIntToC(len(pad)),
 		&cPad[0], &cStride[0], &cUpscale[0], mode.cValue(), dataType.cValue())
+	runtime.KeepAlive(c)
 	return newError("cudnnSetConvolutionNdDescriptor", status)
 }
 
@@ -441,5 +453,6 @@ func (c *ConvDesc) Get() (pad, stride, upscale []int, mode ConvMode,
 	}
 	mode = newConvModeC(cMode)
 	dataType = newDataTypeC(cType)
+	runtime.KeepAlive(c)
 	return
 }
