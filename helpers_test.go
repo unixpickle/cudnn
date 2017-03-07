@@ -7,8 +7,9 @@ import (
 )
 
 var testContext *cuda.Context
+var testHandle *Handle
 
-func setupTest(t *testing.T) *cuda.Context {
+func setupTest(t *testing.T) (*cuda.Context, *Handle) {
 	if testContext == nil {
 		devices, err := cuda.AllDevices()
 		if err != nil {
@@ -22,5 +23,17 @@ func setupTest(t *testing.T) *cuda.Context {
 			t.Fatal(err)
 		}
 	}
-	return testContext
+	if testHandle == nil {
+		err := <-testContext.Run(func() (err error) {
+			testHandle, err = NewHandle(testContext)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return testContext, testHandle
 }

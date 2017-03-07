@@ -3,7 +3,7 @@ package cudnn
 import "testing"
 
 func TestTensorDesc(t *testing.T) {
-	ctx := setupTest(t)
+	ctx, _ := setupTest(t)
 	<-ctx.Run(func() error {
 		makers := []func(t *TensorDesc) error{
 			func(t *TensorDesc) error {
@@ -72,7 +72,7 @@ func TestTensorDesc(t *testing.T) {
 }
 
 func TestFilterDesc(t *testing.T) {
-	ctx := setupTest(t)
+	ctx, _ := setupTest(t)
 	<-ctx.Run(func() error {
 		makers := []func(t *FilterDesc) error{
 			func(f *FilterDesc) error {
@@ -142,7 +142,7 @@ func TestFilterDesc(t *testing.T) {
 }
 
 func TestConvDim(t *testing.T) {
-	ctx := setupTest(t)
+	ctx, _ := setupTest(t)
 	<-ctx.Run(func() error {
 		desc, err := NewConvDesc(ctx)
 		if err != nil {
