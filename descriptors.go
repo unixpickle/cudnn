@@ -10,6 +10,9 @@ const cudnnDataType_t goCudnnFloat = CUDNN_DATA_FLOAT;
 const cudnnDataType_t goCudnnDouble = CUDNN_DATA_DOUBLE;
 const cudnnDataType_t goCudnnHalf = CUDNN_DATA_HALF;
 
+const cudnnConvolutionMode_t goCudnnConvolution = CUDNN_CONVOLUTION;
+const cudnnConvolutionMode_t goCudnnCorrelation = CUDNN_CROSS_CORRELATION;
+
 const size_t goCudnnIntSize = sizeof(int);
 const int * goCudnnNullArray = NULL;
 */
@@ -84,6 +87,36 @@ func (d DataType) cValue() C.cudnnDataType_t {
 		return C.goCudnnHalf
 	default:
 		panic("invalid DataType")
+	}
+}
+
+// ConvMode specifies the type of convolution to perform.
+type ConvMode int
+
+const (
+	Convolution ConvMode = iota
+	CrossCorrelation
+)
+
+func newConvModeC(c C.cudnnConvolutionMode_t) ConvMode {
+	switch c {
+	case C.goCudnnConvolution:
+		return Convolution
+	case C.goCudnnCorrelation:
+		return CrossCorrelation
+	default:
+		panic("unable to create ConvMode")
+	}
+}
+
+func (c ConvMode) cValue() C.cudnnConvolutionMode_t {
+	switch c {
+	case Convolution:
+		return C.goCudnnConvolution
+	case CrossCorrelation:
+		return C.goCudnnCorrelation
+	default:
+		panic("invalid ConvMode")
 	}
 }
 
@@ -300,5 +333,113 @@ func (f *FilterDesc) Get() (dataType DataType, format TensorFormat, dims []int,
 	for i := range dims {
 		dims[i] = int(outDims[i])
 	}
+	return
+}
+
+// ConvDesc describes a convolution operation.
+type ConvDesc struct {
+	desc C.cudnnConvolutionDescriptor_t
+	ctx  *cuda.Context
+}
+
+// NewConvDesc creates a new ConvDesc.
+//
+// This should be called from the cuda.Context.
+func NewConvDesc(ctx *cuda.Context) (*ConvDesc, error) {
+	res := &ConvDesc{ctx: ctx}
+	status := C.cudnnCreateConvolutionDescriptor(&res.desc)
+	if err := newError("cudnnCreateConvolutionDescriptor", status); err != nil {
+		return nil, err
+	}
+	runtime.SetFinalizer(res, func(c *ConvDesc) {
+		c.ctx.Run(func() error {
+			C.cudnnDestroyConvolutionDescriptor(c.desc)
+			return nil
+		})
+	})
+	return res, nil
+}
+
+// Set2D sets a 2-dimensional convolution.
+//
+// This should be called from the cuda.Context.
+func (c *ConvDesc) Set2D(padH, padW, strideH, strideW, upscaleX, upscaleY int,
+	mode ConvMode) error {
+	status := C.cudnnSetConvolution2dDescriptor(c.desc, safeIntToC(padH),
+		safeIntToC(padW), safeIntToC(strideH), safeIntToC(strideW),
+		safeIntToC(upscaleX), safeIntToC(upscaleY), mode.cValue())
+	return newError("cudnnSetConvolution2dDescriptor", status)
+}
+
+// Get2D gets info about a 2-dimensional convolution.
+func (c *ConvDesc) Get2D() (padH, padW, strideH, strideW, upscaleX, upscaleY int,
+	mode ConvMode, err error) {
+	var cPadH, cPadW, cStrideH, cStrideW, cUpscaleX, cUpscaleY C.int
+	var cMode C.cudnnConvolutionMode_t
+	status := C.cudnnGetConvolution2dDescriptor(c.desc, &cPadH, &cPadW, &cStrideH,
+		&cStrideW, &cUpscaleX, &cUpscaleY, &cMode)
+	err = newError("cudnnGetConvolution2dDescriptor", status)
+	if err != nil {
+		return
+	}
+	mode = newConvModeC(cMode)
+	padH, padW = int(cPadH), int(cPadW)
+	strideH, strideW = int(cStrideH), int(cStrideW)
+	upscaleX, upscaleY = int(cUpscaleX), int(cUpscaleY)
+	return
+}
+
+// Set sets n-dimensional convolution information.
+func (c *ConvDesc) Set(pad, stride, upscale []int, mode ConvMode, dataType DataType) error {
+	if len(stride) != len(pad) || len(upscale) != len(pad) {
+		panic("input slice lengths must match")
+	}
+	cPad := make([]C.int, len(pad))
+	cStride := make([]C.int, len(stride))
+	cUpscale := make([]C.int, len(upscale))
+	for i, x := range pad {
+		cPad[i] = safeIntToC(x)
+		cStride[i] = safeIntToC(stride[i])
+		cUpscale[i] = safeIntToC(upscale[i])
+	}
+	status := C.cudnnSetConvolutionNdDescriptor(c.desc, safeIntToC(len(pad)),
+		&cPad[0], &cStride[0], &cUpscale[0], mode.cValue(), dataType.cValue())
+	return newError("cudnnSetConvolutionNdDescriptor", status)
+}
+
+// Get gets n-dimensional convolution information.
+func (c *ConvDesc) Get() (pad, stride, upscale []int, mode ConvMode,
+	dataType DataType, err error) {
+	var cType C.cudnnDataType_t
+	var cMode C.cudnnConvolutionMode_t
+	var trueLen C.int
+	cPad := make([]C.int, 1)
+	cStride := make([]C.int, 1)
+	cUpscale := make([]C.int, 1)
+	status := C.cudnnGetConvolutionNdDescriptor(c.desc, 1, &trueLen,
+		&cPad[0], &cStride[0], &cUpscale[0], &cMode, &cType)
+	err = newError("cudnnGetConvolutionNdDescriptor", status)
+	if err != nil {
+		return
+	}
+	cPad = make([]C.int, int(trueLen))
+	cStride = make([]C.int, int(trueLen))
+	cUpscale = make([]C.int, int(trueLen))
+	status = C.cudnnGetConvolutionNdDescriptor(c.desc, trueLen, &trueLen,
+		&cPad[0], &cStride[0], &cUpscale[0], &cMode, &cType)
+	err = newError("cudnnGetConvolutionNdDescriptor", status)
+	if err != nil {
+		return
+	}
+	pad = make([]int, len(cPad))
+	stride = make([]int, len(cStride))
+	upscale = make([]int, len(cUpscale))
+	for i, x := range cPad {
+		pad[i] = int(x)
+		stride[i] = int(cStride[i])
+		upscale[i] = int(cUpscale[i])
+	}
+	mode = newConvModeC(cMode)
+	dataType = newDataTypeC(cType)
 	return
 }

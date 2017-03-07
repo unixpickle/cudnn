@@ -140,3 +140,65 @@ func TestFilterDesc(t *testing.T) {
 		return nil
 	})
 }
+
+func TestConvDim(t *testing.T) {
+	ctx := setupTest(t)
+	<-ctx.Run(func() error {
+		desc, err := NewConvDesc(ctx)
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		err = desc.Set2D(2, 1, 3, 4, 1, 1, CrossCorrelation)
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		padH, padW, strideH, strideW, upX, upY, mode, err := desc.Get2D()
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		if mode != CrossCorrelation {
+			t.Errorf("bad mode: %v", mode)
+		}
+		actual := []int{padH, padW, strideH, strideW, upX, upY}
+		expected := []int{2, 1, 3, 4, 1, 1}
+		for i, x := range expected {
+			a := actual[i]
+			if a != x {
+				t.Errorf("parameter %d should be %d but got %d", i, x, a)
+			}
+		}
+
+		desc, err = NewConvDesc(ctx)
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		err = desc.Set([]int{2, 1}, []int{3, 4}, []int{1, 1}, CrossCorrelation, Double)
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		pad, stride, up, mode, dt, err := desc.Get()
+		if err != nil {
+			t.Error(err)
+			return nil
+		}
+		if mode != CrossCorrelation {
+			t.Errorf("bad mode: %v", mode)
+		}
+		if dt != Double {
+			t.Errorf("bad data type: %v", dt)
+		}
+		actual = append(append(pad, stride...), up...)
+		for i, x := range expected {
+			a := actual[i]
+			if a != x {
+				t.Errorf("parameter %d should be %d but got %d", i, x, a)
+			}
+		}
+		return nil
+	})
+}
